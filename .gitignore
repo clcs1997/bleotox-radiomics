@@ -1,0 +1,17 @@
+# R temporary files
+.Rhistory
+.RData
+.Ruserdata
+
+# RStudio settings
+.Rproj.user
+
+# Medical datasets
+data/*.xlsx
+data/*.csv
+
+# Output folders
+output/
+
+# MacOS
+.DS_Store

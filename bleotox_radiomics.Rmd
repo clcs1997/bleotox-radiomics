@@ -1,0 +1,738 @@
+---
+title: "BleoTox Radiomics"
+author: "C.L.C. Smith"
+date: "2023-08-02"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading libraries needed for this pipeline
+Load required packages
+
+```{r , echo=FALSE}
+required_packages <- c(
+  "tidyverse",
+  "caret",
+  "readxl",
+  "randomForest",
+  "pROC",
+  "ggplot2"
+)
+
+lapply(required_packages, library, character.only = TRUE)
+```
+
+# 1) Load data
+Load df and create the baseline and interim df
+
+In the df you find the Radiomics values for patients who did and who did not develop toxicity after treatment with a specific type of chemotherapy. 
+
+Radiomics values are for both patient groups extracted for the baseline PET and interim PET
+
+```{r , echo=TRUE}
+
+# ----------------------------------------------------------
+# 1. Load data
+# ----------------------------------------------------------
+df <- read_excel("your_data.xlsx")
+
+# Split the data in the 2 timepoints (Baseline & Interim)
+df_baseline <- df %>% filter(Time == "Baseline")
+df_interim  <- df %>% filter(Time == "Interim")
+```
+
+# 2) Feature selection Volume & SUVmean
+All high correlating features (R > 0.7) with either Volume or SUVmean needs to excluded
+This is done for both the baseline as interim scans
+
+The feature was removed in all df's if it either correlated with the baseline or interim scans
+
+```{r , echo=TRUE}
+# ----------------------------------------------------------
+# 2. Feature selection high correlating with Volume & SUVmean
+# ----------------------------------------------------------
+# Radiomic features with a Spearman correlation coefficient
+# R > 0.7 with Volume or SUVmean were excluded.
+#
+# Spearman correlation was selected because of the
+# relatively small sample size and non-parametric nature
+# of the data.
+# ----------------------------------------------------------
+
+# create new df's
+cor_volume_baseline <- vector()
+for (i in 1:length(df_baseline)) {
+  cor_volume_baseline[i] <- cor(
+    df_baseline$Volume, df_baseline[, i], method = "spearman"
+  )
+}
+
+cor_SUVmean_baseline <- vector()
+for (i in 1:length(df_baseline)) {
+  cor_SUVmean_baseline[i] <- cor(
+    df_baseline$SUVmean, df_baseline[, i], method = "spearman"
+  )
+}
+
+cor_volume_interim <- vector()
+for (i in 1:length(df_interim)) {
+  cor_volume_interim[i] <- cor(
+    df_interim$Volume, df_interim[, i], method = "spearman"
+  )
+}
+
+cor_SUVmean_interim <- vector()
+for (i in 1:length(df_interim)) {
+  cor_SUVmean_interim[i] <- cor(
+    df_interim$SUVmean, df_interim[, i], method = "spearman"
+  )
+}
+
+# Add correlation vectors to dataframe
+correlation_df_baseline <- rbind(
+  df_baseline, cor_volume_baseline, cor_SUVmean_baseline
+)
+
+correlation_df_interim <- rbind(
+  df_interim, cor_volume_interim, cor_SUVmean_interim
+)
+
+# Extract rows containing correlation coefficients
+correlation_rows_baseline <- correlation_df_baseline[
+  c(nrow(correlation_df_baseline) - 1, nrow(correlation_df_baseline)),
+]
+
+correlation_rows_interim <- correlation_df_interim[
+  c(nrow(correlation_df_interim) - 1, nrow(correlation_df_interim)),
+]
+
+# Define correlation threshold
+cor_threshold <- 0.7
+
+# Identify features with high positive or negative correlations
+selected_columns_baseline <- which(
+  apply(
+    correlation_rows_baseline,
+    2,
+    function(col) any(abs(col) > cor_threshold)
+  )
+)
+
+selected_columns_interim <- which(
+  apply(
+    correlation_rows_interim,
+    2,
+    function(col) any(abs(col) > cor_threshold)
+  )
+)
+
+# Remove highly correlated features
+filtered_data_baseline <- correlation_df_baseline[, -selected_columns_baseline]
+filtered_data_interim <- correlation_df_interim[, -selected_columns_interim]
+
+# Remove appended correlation rows
+filtered_data_baseline <- filtered_data_baseline[
+  -c(nrow(filtered_data_baseline) - 1, nrow(filtered_data_baseline)),
+]
+
+filtered_data_interim <- filtered_data_interim[
+  -c(nrow(filtered_data_interim) - 1, nrow(filtered_data_interim)),
+]
+
+# Keep only features that remained after filtering
+# in both baseline and interim datasets
+common_columns <- intersect(names(filtered_data_baseline), names(filtered_data_interim))
+
+# Create new data frames with the common columns
+filtered_data_baseline <- filtered_data_baseline[common_columns]
+filtered_data_interim <- filtered_data_interim[common_columns]
+
+```
+ 
+# 3) Reduce multicollinearity  
+To reduce multicollinearity all high correlating features needs to be excluded
+Feature that will be excluded is the feature with the highes overall correlation
+
+In this way we only have features left which do not correlate with each other
+
+```{r , echo= T}
+
+# ----------------------------------------------------------
+# 3. Feature selection:
+# remove highly intercorrelated radiomic features
+# ----------------------------------------------------------
+# To reduce multicollinearity, highly correlated
+# radiomic features (R > 0.7) were identified.
+#
+# For correlated feature pairs, the feature with the
+# highest overall correlation burden was removed.
+# ----------------------------------------------------------
+
+# Create absolute Spearman correlation matrices
+cor_matrix_baseline <- abs(cor(filtered_data_baseline, method = "spearman"))
+cor_matrix_interim <- abs(cor(filtered_data_interim, method = "spearman"))
+
+# Define correlation threshold
+cor_threshold <- 0.7
+
+# ----------------------------------------------------------
+# BASELINE
+# ----------------------------------------------------------
+
+# Identify highly correlated feature pairs
+high_corr_indices_baseline <- which(
+  cor_matrix_baseline >= cor_threshold &
+    cor_matrix_baseline != 1,
+  arr.ind = TRUE
+)
+
+# Store features to remove
+remove_features_baseline <- c()
+
+for (i in 1:nrow(high_corr_indices_baseline)) {
+  
+  row <- high_corr_indices_baseline[i, 1]
+  col <- high_corr_indices_baseline[i, 2]
+  
+  # Compare total correlation burden
+  row_sum <- sum(cor_matrix_baseline[row, ])
+  col_sum <- sum(cor_matrix_baseline[col, ])
+  
+  # Remove feature with highest correlation burden
+  if (row_sum > col_sum) {
+    
+    remove_features_baseline <- c(
+      remove_features_baseline,
+      rownames(cor_matrix_baseline)[row]
+    )
+    
+  } else {
+    
+    remove_features_baseline <- c(
+      remove_features_baseline,
+      colnames(cor_matrix_baseline)[col]
+    )
+  }
+}
+
+# Remove duplicate feature names
+remove_features_baseline <- unique(remove_features_baseline)
+
+# Keep remaining features
+selected_data_baseline <- filtered_data_baseline %>%
+  select(-all_of(remove_features_baseline))
+
+# ----------------------------------------------------------
+# INTERIM
+# ----------------------------------------------------------
+
+high_corr_indices_interim <- which(
+  cor_matrix_interim >= cor_threshold &
+    cor_matrix_interim != 1,
+  arr.ind = TRUE
+)
+
+remove_features_interim <- c()
+
+for (i in 1:nrow(high_corr_indices_interim)) {
+  
+  row <- high_corr_indices_interim[i, 1]
+  col <- high_corr_indices_interim[i, 2]
+  
+  row_sum <- sum(cor_matrix_interim[row, ])
+  col_sum <- sum(cor_matrix_interim[col, ])
+  
+  if (row_sum > col_sum) {
+    
+    remove_features_interim <- c(
+      remove_features_interim,
+      rownames(cor_matrix_interim)[row]
+    )
+    
+  } else {
+    
+    remove_features_interim <- c(
+      remove_features_interim,
+      colnames(cor_matrix_interim)[col]
+    )
+  }
+}
+
+remove_features_interim <- unique(remove_features_interim)
+
+selected_data_interim <- filtered_data_interim %>%
+  select(-all_of(remove_features_interim))
+
+# ----------------------------------------------------------
+# Keep only overlapping features between datasets
+# ----------------------------------------------------------
+
+common_columns <- intersect(
+  names(selected_data_baseline),
+  names(selected_data_interim)
+)
+
+data_baseline_no_high_cor <- selected_data_baseline[
+  common_columns
+]
+
+data_interim_no_high_cor <- selected_data_interim[
+  common_columns
+]
+```
+
+# 4) Random forest Interim results
+We now train a random forest based on the remaining features. We start with a RF for the interim dataset as here the patients already developed toxicity. Now we can see if patients can be classified correctly when they have active toxicity
+
+To do this we again have to add the features Volume and SUVmean to the other remaining features
+
+```{r , echo=FALSE}
+
+# ----------------------------------------------------------
+# 4. Random Forest classification interim
+# ----------------------------------------------------------
+# A random forest classifier was trained to determine
+# whether interim radiomic features could distinguish
+# patients with acute pulmonary toxicity (DIILD)
+# from the same patient group without pulmonary toxicity.
+#
+# To reduce multicollinearity, only features with low
+# correlation to Volume, SUVmean, and other radiomic
+# features were retained.
+#
+# Volume and SUVmean were subsequently added back as
+# clinically relevant reference variables.
+#
+# Due to the limited sample size, leave-one-out
+# cross-validation (LOOCV) was applied during training.
+# ----------------------------------------------------------
+
+# ----------------------------------------------------------
+# Create dataset for patients with toxicity
+# ----------------------------------------------------------
+
+forest_toxicity_interim <- data_interim_no_high_cor
+
+# Add clinically relevant variables
+forest_toxicity_interim$Volume <- df_interim$Volume
+forest_toxicity_interim$SUVmean <- df_interim$SUVmean
+
+# Add outcome label
+forest_toxicity_interim$DIILD <- "yes"
+
+# ----------------------------------------------------------
+# Create dataset for patients without toxicity
+# ----------------------------------------------------------
+
+# Load control dataset
+df_control <- read_excel("your_control_data.xlsx")
+df_control <- data.frame(df_control)
+
+# Split into baseline and interim scans
+timepoint <- df_control$PatientID
+
+df_control_interim <- df_control %>%
+  filter(timepoint == "Interim")
+
+# Select the same features as toxicity dataset
+common_columns <- intersect(names(forest_toxicity_interim),names(df_control_interim))
+forest_no_toxicity_interim <- df_control_interim[common_columns]
+
+# Add outcome label
+forest_no_toxicity_interim$DIILD <- "no"
+
+# ----------------------------------------------------------
+# Combine datasets
+# ----------------------------------------------------------
+
+forest_interim <- rbind(forest_toxicity_interim, forest_no_toxicity_interim)
+forest_interim$DIILD <- as.factor(forest_interim$DIILD)
+str(forest_interim)
+
+# ----------------------------------------------------------
+# Random forest model
+# ----------------------------------------------------------
+
+# Define tuning grid
+tune_grid <- expand.grid(
+  .mtry = 1:(ncol(forest_interim) - 1)
+)
+
+# Define number of trees to evaluate
+ntree_values <- c(
+  50, 100, 150, 200,
+  250, 300, 500, 1000
+)
+
+# Leave-one-out cross-validation
+control <- trainControl(method = "LOOCV")
+
+# rf model
+rf_results_interim <- list()
+for (ntree in ntree_values) {
+
+  set.seed(42)
+
+  rf_model_interim <- train(
+    DIILD ~ .,
+    data = forest_interim,
+    method = "rf",
+    trControl = control,
+    tuneGrid = tune_grid,
+    ntree = ntree
+  )
+
+  rf_model_interim$ntree <- ntree
+  rf_results_interim[[as.character(ntree)]] <- rf_model_interim
+}
+
+# Select best performing model
+best_rf_model_interim <- rf_results_interim[[
+  which.max(
+    sapply(
+        rf_results_interim,
+        function(x) max(x$results$Accuracy)
+      )
+    )
+  ]]
+
+cat(
+  "Best ntree value:",
+  best_rf_model_interim$ntree,
+  "\n"
+)
+
+# Plot model performance
+plot(best_rf_model_interim)
+
+# ----------------------------------------------------------
+# Feature importance
+# ----------------------------------------------------------
+
+final_rf_model_interim <- best_rf_model_interim$finalModel
+importance_scores_interim <- importance(final_rf_model_interim)
+
+importance_df_interim <- data.frame(
+  Feature = rownames(importance_scores_interim),
+  Importance = importance_scores_interim[
+    , "MeanDecreaseGini"
+  ]
+)
+
+ggplot(importance_df_interim, aes(x = reorder(Feature, Importance), y = Importance)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Feature Importance", x = "Feature", y = "Importance (Mean Decrease in Gini)")
+
+
+# ----------------------------------------------------------
+# Multidimensional scaling (MDS) plot
+# ----------------------------------------------------------
+
+oob_predictions_interim <- predict(
+  final_rf_model_interim,
+  forest_interim,
+  type = "prob"
+)[, 2]
+
+distance_matrix_interim <- dist(oob_predictions_interim)
+
+mds_result_interim <- cmdscale(distance_matrix_interim, k = 2)
+
+mds_df_interim <- data.frame(
+  MDS1 = mds_result_interim[, 1],
+  MDS2 = mds_result_interim[, 2],
+  Actual = forest_interim$DIILD
+)
+
+ggplot(mds_df_interim, aes(x = MDS1, y = MDS2, color = (Actual))) +
+  geom_point() +
+  labs(title = "MDS Plot of Random Forest Predictions", 
+       x = "MDS Dimension 1", 
+       y = "MDS Dimension 2", 
+       color = "Group"
+       )
+
+
+
+```
+
+
+# Random forest Baseline results
+We now train a random forest based on the same remaining features but then from the baseline values. This examines if these features can also predict if patients will developed toxicity during chemotherapy.
+
+To do this we again have to add the features Volume and SUVmean to the other remaining features
+
+```{r , echo= True}
+
+# ----------------------------------------------------------
+# 4. Random Forest classification
+# ----------------------------------------------------------
+# A random forest classifier was trained to determine
+# whether baseline radiomic features can predict if 
+# patients will develop acute pulmonary toxicity 
+#
+# To reduce multicollinearity, only features with low
+# correlation to Volume, SUVmean, and other radiomic
+# features were retained.
+#
+# Volume and SUVmean were subsequently added back as
+# clinically relevant reference variables.
+#
+# Due to the limited sample size, leave-one-out
+# cross-validation (LOOCV) was applied during training.
+# ----------------------------------------------------------
+
+# ----------------------------------------------------------
+# Create dataset for patients with toxicity
+# ----------------------------------------------------------
+
+forest_toxicity_baseline <- data_baseline_no_high_cor
+
+# Add clinically relevant variables
+forest_toxicity_baseline$Volume <- df_baseline$Volume
+forest_toxicity_baseline$SUVmean <- df_baseline$SUVmean
+
+# Add outcome label
+forest_toxicity_baseline$DIILD <- "yes"
+
+# ----------------------------------------------------------
+# Create dataset for patients without toxicity
+# ----------------------------------------------------------
+
+# Load control dataset
+df_control <- read_excel("your_control_data.xlsx")
+df_control <- data.frame(df_control)
+
+# Split into baseline and interim scans
+timepoint <- df_control$PatientID
+
+df_control_baseline <- df_control %>%
+  filter(timepoint == "Baseline")
+
+# Select the same features as toxicity dataset
+common_columns <- intersect(names(forest_toxicity_baseline),names(df_control_baseline))
+forest_no_toxicity_baseline <- df_control_baseline[common_columns]
+
+# Add outcome label
+forest_no_toxicity_baseline$DIILD <- "no"
+
+# ----------------------------------------------------------
+# Combine datasets
+# ----------------------------------------------------------
+
+forest_baseline <- rbind(forest_toxicity_baseline, forest_no_toxicity_baseline)
+forest_baseline$DIILD <- as.factor(forest_baseline$DIILD)
+str(forest_baseline)
+
+# ----------------------------------------------------------
+# Random forest model
+# ----------------------------------------------------------
+
+# Define tuning grid
+tune_grid <- expand.grid(
+  .mtry = 1:(ncol(forest_interim) - 1)
+)
+
+# Define number of trees to evaluate
+ntree_values <- c(
+  50, 100, 150, 200,
+  250, 300, 500, 1000
+)
+
+# Leave-one-out cross-validation
+control <- trainControl(method = "LOOCV")
+
+# rf model
+rf_results_baseline <- list()
+for (ntree in ntree_values) {
+
+  set.seed(42)
+
+  rf_model_baseline <- train(
+    DIILD ~ .,
+    data = forest_baseline,
+    method = "rf",
+    trControl = control,
+    tuneGrid = tune_grid,
+    ntree = ntree
+  )
+
+  rf_model_baseline$ntree <- ntree
+  rf_results_baseline[[as.character(ntree)]] <- rf_model_baseline
+}
+
+# Select best performing model
+best_rf_model_baseline <- rf_results_baseline[[
+  which.max(
+    sapply(
+        rf_results_baseline,
+        function(x) max(x$results$Accuracy)
+      )
+    )
+  ]]
+
+cat(
+  "Best ntree value:",
+  best_rf_model_baseline$ntree,
+  "\n"
+)
+
+# Plot model performance
+plot(best_rf_model_baseline)
+
+# ----------------------------------------------------------
+# Feature importance
+# ----------------------------------------------------------
+
+final_rf_model_baseline<- best_rf_model_baseline$finalModel
+importance_scores_baseline <- importance(final_rf_model_baseline)
+
+importance_df_baseline <- data.frame(
+  Feature = rownames(importance_scores_baseline),
+  Importance = importance_scores_baseline[
+    , "MeanDecreaseGini"
+  ]
+)
+
+ggplot(importance_df_baseline, aes(x = reorder(Feature, Importance), y = Importance)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Feature Importance", x = "Feature", y = "Importance (Mean Decrease in Gini)")
+
+
+# ----------------------------------------------------------
+# Multidimensional scaling (MDS) plot
+# ----------------------------------------------------------
+ 
+oob_predictions_baseline <- predict(
+  final_rf_model_baseline,
+  forest_baseline,
+  type = "prob"
+)[, 2]
+
+distance_matrix_baseline <- dist(oob_predictions_baseline)
+
+mds_result_baseline <- cmdscale(distance_matrix_baseline, k = 2)
+
+mds_df_baseline <- data.frame(
+  MDS1 = mds_result_baseline[, 1],
+  MDS2 = mds_result_baseline[, 2],
+  Actual = forest_baseline$DIILD
+)
+
+ggplot(mds_df_baseline, aes(x = MDS1, y = MDS2, color = (Actual))) +
+  geom_point() +
+  labs(title = "MDS Plot of Random Forest Predictions", 
+       x = "MDS Dimension 1", 
+       y = "MDS Dimension 2", 
+       color = "Group"
+       )
+
+
+```
+
+
+# 5) Statistics
+As the current study is explorative we also wanted to test if any of the remaining features showed significant differences between baseline and interim in patient who developed and who did not develop toxicity during chemotherapy.
+
+As an extra control we also added baseline and interim data from a patient group not receiving the same kind of chemotherapy. Therefore these patients could not develop toxicity at the interim scan.
+
+```{r , echo=FALSE}
+
+# ----------------------------------------------------------
+# Testing for significance between baseline and interim
+# within patients who developed toxicity
+# ----------------------------------------------------------
+feature_set_toxicity <- forest_toxicity_baseline %>%
+  select(where(is.numeric)) %>%
+  names()
+
+forest_toxicity_baseline <- forest_toxicity_baseline %>% arrange(PatientID)
+forest_toxicity_interim   <- forest_toxicity_interim %>% arrange(PatientID)
+
+p_values_toxicity <- sapply(feature_set_toxicity, function(feature) {
+  
+  wilcox.test(
+    forest_toxicity_baseline[[feature]],
+    forest_toxicity_interim[[feature]],
+    paired = TRUE
+  )$p.value
+})
+
+significance_results_toxicity <- data.frame(
+  Feature = feature_set_toxicity,
+  P_value = p_values_toxicity
+)
+
+significant_feature_names_toxicity <- significance_results_toxicity %>%
+  filter(P_value < 0.05) %>%
+  pull(Feature)
+
+# ----------------------------------------------------------
+# Testing for significance between baseline and interim
+# within patients who did not developed toxicity
+# ----------------------------------------------------------
+feature_set_no_toxicity <- forest_no_toxicity_baseline %>%
+  select(where(is.numeric)) %>%
+  names()
+
+forest_no_toxicity_baseline <- forest_no_toxicity_baseline %>% arrange(PatientID)
+forest_no_toxicity_interim   <- forest_no_toxicity_interim %>% arrange(PatientID)
+
+p_values_no_toxicity <- sapply(feature_set_no_toxicity, function(feature) {
+  
+  wilcox.test(
+    forest_no_toxicity_baseline[[feature]],
+    forest_no_toxicity_interim[[feature]],
+    paired = TRUE
+  )$p.value
+})
+
+significance_results_no_toxicity <- data.frame(
+  Feature = feature_set_no_toxicity,
+  P_value = p_values_no_toxicity
+)
+
+significant_feature_names_no_toxicity <- significance_results_no_toxicity %>%
+  filter(P_value < 0.05) %>%
+  pull(Feature)
+
+# ----------------------------------------------------------
+# Testing for significance between baseline and interim
+# within control patient group (DLBCL patients)
+# ----------------------------------------------------------
+
+df_DLBCL_control <- read_excel("your_control_group_data.xlsx") %>%
+  arrange(PatientID)
+
+df_DLBCL_baseline <- df_DLBCL_control %>% filter(Time == "Baseline")
+df_DLBCL_interim   <- df_DLBCL_control %>% filter(Time == "Interim")
+
+features_DLBCL <- df_DLBCL_baseline %>%
+  select(where(is.numeric)) %>%
+  names()
+
+p_values_DLBCL <- sapply(features_DLBCL, function(feature) {
+  
+  wilcox.test(
+    df_DLBCL_baseline[[feature]],
+    df_DLBCL_interim[[feature]],
+    paired = TRUE
+  )$p.value
+})
+
+significance_results_DLBCL <- data.frame(
+  Feature = features_DLBCL,
+  P_value = p_values_DLBCL
+)
+
+significant_feature_names_DLBCL <- significance_results_DLBCL %>%
+  filter(P_value < 0.05) %>%
+  pull(Feature)
+
+```
+
