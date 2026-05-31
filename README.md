@@ -1,40 +1,90 @@
 # BleoTox Radiomics
 
-Radiomics machine learning pipeline in R for predicting chemotherapy-associated pulmonary toxicity using PET imaging features.
+Radiomics machine learning pipeline in R for investigating chemotherapy-associated 
+pulmonary toxicity using Radiomics PET imaging features.
 
 ## Overview
 
-This repository contains the analysis pipeline accompanying the publication:
+This repository contains the analysis workflow accompanying a published Radiomics PET 
+study investigating pulmonary toxicity development during chemotherapy treatment.
 
-[ADD PAPER TITLE HERE]
+The project explores whether PET-derived Radiomic features can:
+* Identify active pulmonary toxicity during treatment (interim scans)
+* Predict toxicity development in the future from baseline scans
+* Examine toxicity-related imaging patterns compared to control patient groups
 
-The project investigates whether PET radiomic features can:
+The workflow combines Radiomics feature selection, multicollinearity reduction, 
+machine learning classification, and statistical analysis within a reproducible R-based pipeline.
 
-* identify active pulmonary toxicity during chemotherapy
-* predict future toxicity development from baseline scans
+---
 
-The workflow includes:
+## Methodology
 
-* feature filtering using Spearman correlation
-* multicollinearity reduction
-* random forest classification
-* leave-one-out cross-validation (LOOCV)
-* feature importance analysis
-* statistical comparison between baseline and interim scans
+The analysis pipeline includes:
+
+### 1) Feature preprocessing
+
+* Baseline and interim PET scan separation
+* Spearman correlation filtering against the features Volume and SUVmean
+* Removal of highly intercorrelated Radiomic features to reduce multicollinearity
+
+### 2) Machine learning
+
+* Random Forest classification
+* Leave-One-Out Cross Validation (LOOCV) due to the small sample size
+* Hyperparameter tuning across multiple tree sizes
+* Feature importance analysis
+
+### 3) Statistical analysis
+
+* Paired Wilcoxon testing (non-parametric method due to the small sample size)
+* Baseline vs interim comparison
+* Toxicity and non-toxicity subgroup analysis
+* Additional external control group validation
+
+---
 
 ## Technologies
 
-* R
+This project was developed in R using:
+
 * tidyverse
 * caret
 * randomForest
 * ggplot2
 * pROC
+* readxl
+* rmarkdown
+
+---
+
+## Repository Structure
+
+```text
+bleotox-radiomics/
+│
+├── README.md
+├── bleotox_radiomics.Rmd
+├── bleotox_radiomics.html
+├── .gitignore
+│
+├── data/
+│   └── example_input_structure.csv
+│
+├── figures/
+│   ├── mds_plot.png
+│   └── statistical_analysis.png
+│
+└── paper/
+    └── bleotox_publication.pdf
+```
+
+
+---
 
 ## Running the analysis
 
 Install required packages:
-
 ```r
 install.packages(c(
   "tidyverse",
@@ -42,28 +92,50 @@ install.packages(c(
   "readxl",
   "randomForest",
   "pROC",
-  "ggplot2"
+  "ggplot2",
+  "rmarkdown"
 ))
 ```
 
-Run the analysis:
-
+Run the analysis pipeline:
 ```r
 rmarkdown::render("bleotox_radiomics.Rmd")
 ```
 
-## Data availability
+---
 
-The datasets used in this study contain sensitive clinical patient information and cannot be publicly shared due to hospital privacy regulations and ethical restrictions.
+## Data Availability
 
-The repository therefore provides:
+The datasets used in this study contain sensitive clinical patient information and 
+cannot be publicly shared due to hospital privacy regulations and ethical restrictions.
 
-* the complete analysis pipeline
-* preprocessing workflow
-* feature selection methodology
-* machine learning implementation
-* statistical analysis workflow
+This repository therefore provides:
+* The complete analysis pipeline
+* Preprocessing workflow
+* Feature selection methodology
+* Machine learning implementation
+* Statistical analysis workflow
+* A small dummy dataset demonstrating the expected input structure
 
+The included dummy dataset does not contain real patient information and is provided 
+solely for illustrative and reproducibility purposes.
+
+Researchers interested in reproducing the study may adapt the pipeline to their 
+own institutional datasets.
+
+---
+ 
 ## Publication
 
-[Add DOI or publication link here]
+Associated publication: 
+Smith CLC et al. Diagnostics (2024).
+https://doi.org/10.3390/diagnostics14222531
+
+---
+
+## Author
+
+C.L.C. Smith
+
+
+

@@ -332,10 +332,10 @@ df_control <- read_excel("your_control_data.xlsx")
 df_control <- data.frame(df_control)
 
 # Split into baseline and interim scans
-timepoint <- df_control$PatientID
+Time <- df_control$PatientID
 
 df_control_interim <- df_control %>%
-  filter(timepoint == "Interim")
+  filter(Time == "Interim")
 
 # Select the same features as toxicity dataset
 common_columns <- intersect(names(forest_toxicity_interim),names(df_control_interim))
@@ -508,10 +508,10 @@ df_control <- read_excel("your_control_data.xlsx")
 df_control <- data.frame(df_control)
 
 # Split into baseline and interim scans
-timepoint <- df_control$PatientID
+Time <- df_control$PatientID
 
 df_control_baseline <- df_control %>%
-  filter(timepoint == "Baseline")
+  filter(Iime == "Baseline")
 
 # Select the same features as toxicity dataset
 common_columns <- intersect(names(forest_toxicity_baseline),names(df_control_baseline))
