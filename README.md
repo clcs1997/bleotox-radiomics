@@ -1,9 +1,9 @@
-# BleoTox Radiomics
+# BleoTox Radiomics project
 
 Radiomics machine learning pipeline in R for investigating chemotherapy-associated 
 pulmonary toxicity using Radiomics PET imaging features.
 
-## Overview
+## Project overview
 
 This repository contains the analysis workflow accompanying a published Radiomics PET 
 study investigating pulmonary toxicity development during chemotherapy treatment.
@@ -18,7 +18,7 @@ machine learning classification, and statistical analysis within a reproducible 
 
 ---
 
-## Methodology
+## Methodology & Validation
 
 The analysis pipeline includes:
 
@@ -30,10 +30,14 @@ The analysis pipeline includes:
 
 ### 2) Machine learning
 
-* Random Forest classification
-* Leave-One-Out Cross Validation (LOOCV) due to the small sample size
-* Hyperparameter tuning across multiple tree sizes
-* Feature importance analysis
+* Algorithm: Random Forest classification
+* Hyperparameter tuning across multiple tree sizes to optimize the model 
+* Validation strategy: Leave-One-Out Cross Validation (LOOCV) due to the clinical nature ans
+  small sample size of the dataset. This approach ensures that every sample is used for 
+  validation, providing an unbiased estimate of model accuracy. 
+* Model selection: The final model configuration was automatically selected based on 
+  maximizing the cross-validated accuracy metric.
+* Feature importance analysis was assessed using the mean decrease in Gini 
 
 ### 3) Statistical analysis
 
@@ -41,6 +45,26 @@ The analysis pipeline includes:
 * Baseline vs interim comparison
 * Toxicity and non-toxicity subgroup analysis
 * Additional external control group validation
+
+---
+
+## Explainability & clinical interpretation
+
+To avoid black-box model and ensure clinical relevance (essential for public health research):
+* Feature importance analysis was assessed using the mean decrease in Gini
+* This metric allows us to rank and interpret which specific Radiomics features contribute
+  most to predict bleomycineo-induced toxicity.
+
+---
+
+## Results & Impact
+Results:  The RF classifier correctly identified bleomycine-induced toxicity in 72.2% of the
+patients and predicted the development of bleomycine-induced toxicity correctly in 50% of the 
+patients
+
+Clinical relevance: Certain regional 18F-FDG PET radiomics features can effectively identify
+bleomycine-induced toxicity and 18F-FDG PET radiomics, with and without machine learning, 
+might serve as potential biomarkers for to detect bleomycine induced toxicity.
 
 ---
 
