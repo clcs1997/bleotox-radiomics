@@ -1,9 +1,9 @@
-# BleoTox Radiomics project
+# BleoTox Radiomics Project
 
 Radiomics machine learning pipeline in R for investigating chemotherapy-associated 
 pulmonary toxicity using Radiomics PET imaging features.
 
-## Project overview
+## Project Overview
 
 This repository contains the analysis workflow accompanying a published Radiomics PET 
 study investigating pulmonary toxicity development during chemotherapy treatment.
@@ -48,7 +48,7 @@ The analysis pipeline includes:
 
 ---
 
-## Explainability & clinical interpretation
+## Explainability & Clinical Interpretation
 
 To avoid black-box model and ensure clinical relevance (essential for public health research):
 * Feature importance analysis was assessed using the mean decrease in Gini
