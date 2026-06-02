@@ -14,3 +14,6 @@ output/
 
 # MacOS
 .DS_Store
+
+# Windows image cache
+Thumbs.db
