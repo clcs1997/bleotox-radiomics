@@ -1,19 +1,19 @@
 # BleoTox Radiomics Project
 
 Radiomics machine learning pipeline in R for investigating chemotherapy-associated 
-pulmonary toxicity using Radiomics PET imaging features.
+pulmonary toxicity using radiomics PET imaging features.
 
 ## Project Overview
 
-This repository contains the analysis workflow accompanying a published Radiomics PET 
+This repository contains the analysis workflow accompanying a published radiomics PET 
 study investigating pulmonary toxicity development during chemotherapy treatment.
 
-The project explores whether PET-derived Radiomic features can:
+The project explores whether PET-derived radiomics features can:
 * Identify active pulmonary toxicity during treatment (interim scans)
 * Predict toxicity development in the future from baseline scans
 * Examine toxicity-related imaging patterns compared to control patient groups
 
-The workflow combines Radiomics feature selection, multicollinearity reduction, 
+The workflow combines radiomic feature selection, multicollinearity reduction, 
 machine learning classification, and statistical analysis within a reproducible R-based pipeline.
 
 ---
@@ -26,7 +26,7 @@ The analysis pipeline includes:
 
 * Baseline and interim PET scan separation
 * Spearman correlation filtering against the features Volume and SUVmean
-* Removal of highly intercorrelated Radiomic features to reduce multicollinearity
+* Removal of highly intercorrelated radiomic features to reduce multicollinearity
 
 ### 2) Machine learning
 
